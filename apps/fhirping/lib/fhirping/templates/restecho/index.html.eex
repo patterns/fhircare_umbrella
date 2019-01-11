@@ -1,0 +1,235 @@
+<div id="app">
+  <h1>FHIR data</h1>
+
+  <section v-if="step == 'errors'">
+    <p>Sadly, we're not able to perform this step at the moment, please save your work.</p>
+    <p>
+    <b>Please correct the following:</b>
+      <ul>
+      <li v-for="error in errors">{{ error }}</li>
+      </ul>
+    </p>
+  </section>
+
+  <section v-else-if="step == 'loading-init'">
+    <form @submit="sendRead">
+      <p>
+        <label for="apiurl">API server:</label>
+        <input id="apiurl" v-model="apiurl" type="text" name="apiurl" />
+      </p>
+      <p>
+        <label for="rtype">Resource type:</label>
+        <select id="rtype" v-model="rtype" name="rtype">
+          <option>Choose</option>
+          <option v-for="opt in resourcetypes" v-bind:value="opt.val">{{ opt.name }}</option>
+        </select>
+      </p>
+      <p>
+        <label for="rid">Resource ID:</label>
+        <input id="rid" v-model="rid" type="text" name="rid"></input>
+      </p>
+      <p><input type="submit" value="Submit"/></p>
+    </form>
+  </section>
+
+  <section v-else-if="step =='update-done'">
+    <h5>Update results:</h5>
+      <ul>
+      <li v-for="fldv, fldk in ack">
+        <b>{{ fldk }} : </b><span>{{ fldv }}</span>
+      </li>
+      </ul>
+  </section>
+  <section v-else>
+    <form @submit="sendUpdate">
+      <div class="flex items-center">
+        <div class="w-50 pa1"><input v-model="resourcepath" readonly tabindex="-1" type="text" class="f5 light-silver"/></div>
+        <div class="pa1"><input type="submit" value="Update"/></div>
+      </div>
+
+      <vanilla :tree.sync="info"></vanilla>
+
+      <div class="flex items-center">
+        <div class="w-50 pa1"><input v-model="resourcepath" readonly tabindex="-1" type="text" class="f5 light-silver"/></div>
+        <div class="pa1"><input type="submit" value="Update"/></div>
+      </div>
+    </form>
+  </section>
+</div>
+<script>
+    // Enumeration of the resource types for the dropdown list.
+    const resourcetypes = [{name: 'Patient', val: 'patients'}, {name: 'Observation', val: 'observation'}]
+
+    // Make the instance.
+    new Vue({
+      el: '#app',
+      data () {
+        return {
+          info: null,
+          ack: null,
+          progress: '',
+          resourcepath: '',
+          apiurl: 'http://localhost:4000/api',
+          rid: 'd3af67c9-0c02-45f2-bc91-fea45af3ee83',
+          rtype: 'Choose',
+          errors: []
+        }
+      },
+      methods: {
+
+        sendRead (e) {
+          e.preventDefault();
+          this.errors = [];
+
+          // Form input validation for the dropdown list.
+          if (this.rtype === 'Choose'){
+            this.errors.push('Resource type is required.');
+            return;
+          }
+          // todo validation for apiurl input
+
+          // Save the REST path to be used later by the update request.
+          this.resourcepath = this.apiurl +'/'+ this.rtype +'/'+ encodeURIComponent(this.rid);
+
+          // Make GET request to FHIR gRPC service and keep the response in the info model property.
+          axios
+            .get(this.resourcepath)
+            .then(response => (this.info = response))
+            .catch(error => {
+              console.log(error)
+              this.errors.push(error)
+            })
+            .finally(() => this.progress = 'loading-done')
+        },
+
+        sendUpdate (e) {
+          e.preventDefault();
+          this.errors = [];
+          amber = JSON.stringify(this.info.data);
+
+          // Make update call to the FHIR service (todo: use type specifier instead of fixed patient fieldname)
+          axios.put(this.resourcepath, {
+              id: this.info.data.id,
+              patient: amber
+            })
+            .then(response => (this.ack = response))
+            .catch(function(error){
+              console.log(error);
+              this.errors.push(error);
+            })
+            .finally(()=>this.progress = 'update-done')
+        }
+      },
+      computed: {
+        step: function() {
+          if (this.errors.length != 0) {
+            return 'errors';
+          }
+          if (this.progress.length == 0) {
+            return 'loading-init';
+          }
+
+          return this.progress;
+        }
+      }
+    });
+
+    // Register the component. The tree property expects the JSON object from the parent/invoker.
+    Vue.component('vanilla', {
+      props: ['tree'],
+      data() {
+        return { root: this.tree }
+      },
+      watch: {
+        root(val) {
+          this.$emit('update:tree', val);
+        }
+      },
+      computed: {
+        // input-fields list the JSON's level 1 items which we display as editable text boxes
+        inputFields: function() {
+          // todo: simplify this "list of field-names"
+          // Making the copy in this way means severing any binding to Vue's models
+          tmp = JSON.parse(JSON.stringify(this.tree));
+          delete tmp.data.id;
+          return tmp.data;
+        },
+        // ID is the sequence key that we separate from other fields in order to style it read-only
+        sequenceNumber: function() {
+          return this.tree.data.id;
+        }
+      },
+      template: '#vanilla-template'
+    });
+
+    // Register the subtree component.
+    Vue.component('subtree', {
+      props: ['tree'],
+      data() {
+        return { descend: this.tree }
+      },
+      watch: {
+        descend(val) {
+          this.$emit('update:tree', val);
+        }
+      },
+      computed: {
+        amLeaf: function() {
+          return this.amBool || this.amNumber || this.amString;
+        },
+        amObject: function() {
+          op = Object.getPrototypeOf(new Object());
+          mp = Object.getPrototypeOf(this.tree);
+          return (op == mp);
+        },
+        amArray: function() {
+          return Array.isArray(this.tree);
+        },
+        amNumber: function() {
+          return (typeof this.tree === 'number' && isFinite(this.tree));
+        },
+        amBool: function() {
+          return (typeof this.tree === 'boolean');
+        },
+        amString: function() {
+          return (typeof this.tree === 'string' || this.tree instanceof String);
+        }
+      },
+
+      template: '#subtree-template'
+    });
+</script>
+
+<script type="text/x-template" id="vanilla-template">
+   <ul class="list pl0">
+   <li class="pa3 pa4-ns bb b--black-10">
+     <label for="seqnum" class="f3 db mb1 light-silver">ID</label>
+     <input id="seqnum" name="seqnum" readonly tabindex="-1" type="text" class="f5 db lh-copy measure light-silver" v-bind:value="sequenceNumber" />
+   </li>
+   <li v-for="(fieldval, fieldname, index) in inputFields" :key="index" class="pa3 pa4-ns bb b--black-10">
+     <label class="f3 db mb1" >{{ fieldname }}</label>
+     <subtree :tree.sync="root.data[fieldname]"></subtree>
+   </li>
+   </ul>
+</script>
+
+<script type="text/x-template" id="subtree-template">
+  <span v-if="amLeaf"><input v-model="descend" type="text" class="f6 db" /></span>
+  <span v-else-if="amArray">
+    <ol>
+    <li v-for="(fval, fkey, fidx) in descend" :key="fidx" class="f6">
+      <subtree :tree.sync="tree[fkey]"></subtree>
+    </li>
+    </ol>
+  </span>
+  <span v-else-if="amObject">
+    <dl v-for="(fval, fkey, fidx) in descend" :key="fidx" class="lh-title mv2">
+      <dt class="f6 dib b">{{ fkey }}:</dt>
+      <dd class="dib ml0 gray"><subtree :tree.sync="tree[fkey]"></subtree></dd>
+    </dl>
+  </span>
+  <span v-else><p class="f7 db bg-orange">{{ descend }}</p></span>
+
+</script>
+
+
