@@ -7,17 +7,11 @@ defmodule Fhirshape.PatientController do
   action_fallback Fhirshape.FallbackController
 
   def index(conn, _params) do
-    patients = Healthcare.list_patients()
-    render(conn, "index.json", patients: patients)
+
   end
 
   def create(conn, %{"patient" => patient_params}) do
-    with {:ok, %Patient{} = patient} <- Healthcare.create_patient(patient_params) do
-      conn
-      |> put_status(:created)
-      |> put_resp_header("location", Routes.patient_path(conn, :show, patient))
-      |> render("show.json", patient: patient)
-    end
+
   end
 
   def show(conn, %{"id" => id}) do
@@ -41,10 +35,6 @@ defmodule Fhirshape.PatientController do
   end
 
   def delete(conn, %{"id" => id}) do
-    patient = Healthcare.get_patient!(id)
 
-    with {:ok, %Patient{}} <- Healthcare.delete_patient(patient) do
-      send_resp(conn, :no_content, "")
-    end
   end
 end

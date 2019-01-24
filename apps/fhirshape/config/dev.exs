@@ -42,7 +42,7 @@ config :fhirshape, Fhirshape.Endpoint,
 # different ports.
 
 # TLS cert files to connect to fhirbuffer gRPC service
-config :fhir_shape, :ca_cert_path, "priv/Test_Cert_Auth.crt"
-config :fhir_shape, :cert_path, "priv/Fhirshape.crt"
-config :fhir_shape, :key_path, "priv/Fhirshape.key"
-config :fhir_shape, :fhirbuffer_addr, "localhost:10000"
+config :fhirshape, :ca_cert_path, "priv/Test_Cert_Auth.crt"
+config :fhirshape, :cert_path, "priv/Fhirshape.crt"
+config :fhirshape, :key_path, "priv/Fhirshape.key"
+config :fhirshape, :fhirbuffer_addr, "localhost:10000"

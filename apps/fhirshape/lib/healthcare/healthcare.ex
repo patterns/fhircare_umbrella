@@ -5,7 +5,7 @@ defmodule Fhirshape.Healthcare do
 
   import Ecto.Query, warn: false
 
-  require Logger
+  ####require Logger
 
   alias Fhirshape.Healthcare.Patient
 
@@ -57,7 +57,7 @@ defmodule Fhirshape.Healthcare do
         {:ok, %Patient{resource: savjson}}
 
       true ->
-        Logger.debug("Patient ID is ambiguous #{inspect(attrs)}")
+        ####Logger.debug("Patient ID is ambiguous #{inspect(attrs)}")
         {:error, %Ecto.Changeset{}}
     end
   end
@@ -67,30 +67,13 @@ defmodule Fhirshape.Healthcare do
   #
   # May need to break into separate module for gRPC specific logic
   #
-  @ca_cert_path Application.get_env(:fhir_shape, :ca_cert_path)
-  @cert_path Application.get_env(:fhir_shape, :cert_path)
-  @key_path Application.get_env(:fhir_shape, :key_path)
-  @fhirbuffer_addr Application.get_env(:fhir_shape, :fhirbuffer_addr)
 
   defp read_resource(id, type) do
     # We close the connection after the read (and incur the cost to re-connect per request) to avoid holding on to mem/net resources.
-    cred =
-      GRPC.Credential.new(
-        ssl: [
-          cacertfile: @ca_cert_path,
-          certfile: @cert_path,
-          keyfile: @key_path,
-          verify: :verify_peer,
-          server_name_indication: 'FhirBuffer'
-        ]
-      )
-
-    opts = [cred: cred]
-    request = Fhirbuffer.Search.new(id: id, type: type)
-
-    case GRPC.Stub.connect(@fhirbuffer_addr, opts) do
+    case GRPC.Stub.connect(conf!(:fhirbuffer_addr), tlscred()) do
       {:ok, channel} ->
         try do
+          request = Fhirbuffer.Search.new(id: id, type: type)
           {:ok, reply} = Fhirbuffer.Fhirbuffer.Stub.read(channel, request)
           {:ok, reply.resource}
         after
@@ -98,29 +81,16 @@ defmodule Fhirshape.Healthcare do
         end
 
       _ ->
-        {:error, "gRPC connect failed (check TLS credentials)"}
+        {:error, "gRPC connect failed (check TLS credentials and common name/indication)"}
     end
   end
 
   defp update_resource(json) do
     # We close the connection after the update (and incur the cost to re-connect per request) to avoid holding on to mem/net resources.
-    cred =
-      GRPC.Credential.new(
-        ssl: [
-          cacertfile: @ca_cert_path,
-          certfile: @cert_path,
-          keyfile: @key_path,
-          verify: :verify_peer,
-          server_name_indication: 'FhirBuffer'
-        ]
-      )
-
-    opts = [cred: cred]
-    request = Fhirbuffer.Change.new(resource: json)
-
-    case GRPC.Stub.connect(@fhirbuffer_addr, opts) do
+    case GRPC.Stub.connect(conf!(:fhirbuffer_addr), tlscred()) do
       {:ok, channel} ->
         try do
+          request = Fhirbuffer.Change.new(resource: json)
           {:ok, reply} = Fhirbuffer.Fhirbuffer.Stub.update(channel, request)
           {:ok, reply.resource}
         after
@@ -131,6 +101,55 @@ defmodule Fhirshape.Healthcare do
         {:error, "gRPC connect failed (check TLS credentials)"}
     end
   end
- 
-  
+
+  defp tlscred() do
+    cr =
+      GRPC.Credential.new(
+        ssl: [
+          cacertfile: conf!(:ca_cert_path),
+          certfile: conf!(:cert_path),
+          keyfile: conf!(:key_path),
+          verify: :verify_peer,
+          server_name_indication: conf!(:fhirbuffer_indication)
+        ]
+      )
+
+    ####Logger.debug("cred settings #{inspect(cr)}")
+
+    [cred: cr]
+  end
+
+  # TLS Configuration settings that are required to connect to the gRPC svc.
+  # For example, the cert/key files are a mounted volume of the container.
+  defp conf!(key) do
+    kls = Application.get_env(:fhirshape, Fhirshape.Healthcare)
+    case key do
+
+      :fhirbuffer_addr ->
+        Keyword.get(kls, :fhirbuffer_addr)
+
+      :fhirbuffer_indication ->
+        to_charlist(Keyword.get(kls, :fhirbuffer_indication))
+
+      k when k in [:ca_cert_path, :cert_path, :key_path] ->
+        # With crt/key environment vars look for empty values
+        case path = Keyword.get(kls, k) do
+          v when v in ["", nil] -> defaultconf(k)
+          _ -> path
+        end
+
+      _ ->
+        raise "Key argument must be one of (:ca_cert_path,:cert_path,:key_path,:fhirbuffer_addr,:fhirbuffer_indication)"
+    end
+  end
+
+  # In the absence of configured values, fallback to cert/key files in the release.
+  defp defaultconf(key) do
+    cert_dir = Application.app_dir(:fhirshape, "priv/cert")
+    case key do
+      :ca_cert_path -> Path.join(cert_dir, "certauthdev.crt")
+      :cert_path -> Path.join(cert_dir, "fhirshape.crt")
+      :key_path -> Path.join(cert_dir, "fhirshape.key")
+    end
+  end
 end

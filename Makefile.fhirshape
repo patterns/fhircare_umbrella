@@ -1,0 +1,24 @@
+.PHONY: help clean build image run release image docker
+
+APP_NAME ?= `grep 'app:' mix.exs | 'fhirshape'`
+APP_VSN ?= `grep 'version:' mix.exs | '0.1.0'`
+BUILD ?= `git rev-parse --short HEAD`
+
+help:
+	@echo "$(APP_NAME):$(APP_VSN)-$(BUILD)"
+
+
+clean: ## Clean build artifacts
+	mix clean
+
+run: ## Run the app from Docker
+	docker run --stop-signal=SIGINT --env-file docker-fhirshape.env \
+		--expose 4000 -p 4000:4000 --rm -it $(APP_NAME):latest
+
+image: ## Build a Docker image
+	docker build --build-arg APP_NAME=$(APP_NAME) \
+		--build-arg APP_VSN=$(APP_VSN) \
+		--build-arg PHOENIX_SUBDIR=$(APP_NAME) \
+		--build-arg SKIP_PHOENIX=true \
+		-t $(APP_NAME):$(APP_VSN)-$(BUILD) \
+		-t $(APP_NAME):latest .

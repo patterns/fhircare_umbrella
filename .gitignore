@@ -1,0 +1,11 @@
+/_build
+/_elixir
+/deps
+/rel/test
+relx
+erl_crash.dump
+*.ez
+mix.lock
+/mount
+/releases
+/assets/node_modules

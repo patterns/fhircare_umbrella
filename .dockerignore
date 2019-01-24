@@ -1,0 +1,14 @@
+_build/
+deps/
+bin/
+.git/
+.gitignore
+Dockerfile*
+Makefile
+README*
+test
+*.sh
+assets/node_modules/
+priv/static/
+erl_crash.dump
+
