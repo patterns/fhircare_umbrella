@@ -1,0 +1,25 @@
+FROM golang:alpine3.8 AS builder
+ARG ZIPPROTOC=https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip
+ENV PATH=/usr/local/protoc/bin:$PATH
+RUN apk update && apk --no-cache add  openssl-dev autoconf automake libtool git \
+        build-base gcc abuild binutils cmake linux-headers \
+        unzip curl ; \
+    go get -u google.golang.org/grpc ; \
+    go get -u github.com/golang/protobuf/protoc-gen-go ; \
+    curl -o protoc.zip -L $ZIPPROTOC ; \
+    unzip protoc.zip -d /usr/local/protoc ; 
+WORKDIR /app
+RUN git clone -b heroku https://github.com/patterns/fhirbuffer ; \
+    cd fhirbuffer ; \
+    go install ./cmd/...
+
+# final stage
+FROM alpine:3.8
+####ENV DATABASE_URL="postgres://postgres:postgres@localhost:5432/fhirbase"
+ENV FHIRBUFFER_COMMON=fhirbuffer
+COPY --from=builder /go/bin/server /bin/fhirbuffer
+RUN adduser -D fhirbuffer ; 
+USER fhirbuffer
+CMD ["/bin/fhirbuffer", "-tls=true"]
+
+

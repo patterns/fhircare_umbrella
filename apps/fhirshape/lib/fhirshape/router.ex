@@ -5,6 +5,11 @@ defmodule Fhirshape.Router do
     plug :accepts, ["json"]
   end
 
+  scope "/", Fhirshape do
+    pipe_through :api
+    get "/", RootController, :index
+  end
+
   scope "/api", Fhirshape do
     pipe_through :api
 
