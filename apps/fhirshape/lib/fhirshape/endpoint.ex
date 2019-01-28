@@ -41,7 +41,7 @@ defmodule Fhirshape.Endpoint do
     signing_salt: "vMig34Vu"
 
   plug Corsica,
-    origins: "http://localhost:4101",
+    origins: ["http://localhost:4101", "https://accidental-oil.glitch.me", "https://joyous-scissor.glitch.me"],
     allow_headers: :all,
     log: [rejected: :error, invalid: :warn, accepted: :debug]
 

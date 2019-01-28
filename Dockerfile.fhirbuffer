@@ -16,7 +16,7 @@ RUN git clone -b heroku https://github.com/patterns/fhirbuffer ; \
 # final stage
 FROM alpine:3.8
 ####ENV DATABASE_URL="postgres://postgres:postgres@localhost:5432/fhirbase"
-ENV FHIRBUFFER_COMMON=fhirbuffer
+ENV FHIRBUFFER_COMMON=fhirbuffer3
 COPY --from=builder /go/bin/server /bin/fhirbuffer
 RUN adduser -D fhirbuffer ; 
 USER fhirbuffer
