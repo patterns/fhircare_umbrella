@@ -1,0 +1,41 @@
+// Protocol buffer description for a FHIR persistence tier service
+
+syntax = "proto3";
+
+package fhirbuffer;
+
+// Interface exported by the server.
+service Fhirbuffer {
+
+ // Obtains the healthcare resource that matches the search criteria.
+ rpc Read(Search) returns (Record) {}
+
+ // Modifies the healthcare resource 
+ rpc Update(Change) returns (Record) {}
+
+ // Recreates the healthcare resource 
+ rpc Create(Change) returns (Record) {}
+
+ // Removes the healthcare resource that matches the search criteria.
+ rpc Delete(Search) returns (Record) {}
+
+}
+
+// A search criteria to request the healthcare resource.
+message Search {
+ // A ID is the UUID of the record 
+ string id = 1;
+
+ // The resource type
+ string type = 2;
+}
+
+// A modification to change the healthcare resource.
+message Change {
+ bytes resource = 1;
+}
+
+// A healthcare resource returned from the data store.
+message Record {
+ bytes resource = 1;
+}

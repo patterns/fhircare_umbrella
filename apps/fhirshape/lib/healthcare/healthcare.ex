@@ -1,83 +1,140 @@
 defmodule Fhirshape.Healthcare do
   @moduledoc """
   The Healthcare context.
+  Takes controller calls and passes along to the fhirbuffer service.
   """
 
-  import Ecto.Query, warn: false
-
-  ####require Logger
-
+  alias Fhirshape.Healthcare.Vanilla
   alias Fhirshape.Healthcare.Patient
+  alias Fhirshape.Healthcare.FhirbufferDialer
 
+  # Injection to enable stubbing in tests.
+  @fhirbuffer_dialer Application.get_env(:fhirshape, Fhirshape.Healthcare)[:fhirbuffer_dialer] ||
+                       FhirbufferDialer
 
   @doc """
-  Gets a single patient.
+  Gets a single resource.
 
-  Raises `Ecto.NoResultsError` if the Patient does not exist.
+  Returns nil if the Resource does not exist.
 
   ## Examples
 
-      iex> get_patient!(123)
-      %Patient{}
+      iex> get_vanilla(123, "Patient")
+      %Vanilla{}
 
-      iex> get_patient!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_patient!(id) do
-    {:ok, json} = read_resource(id, "Patient")
-    %Patient{resource: json}
-  end
-
-
-  @doc """
-  Updates a patient.
-
-  ## Examples
-
-      iex> update_patient(patient, %{field: new_value})
-      {:ok, %Patient{}}
-
-      iex> update_patient(patient, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
+      iex> get_vanilla(456, "Patient")
+      nil
 
   """
-  def update_patient(%Patient{} = patient, attrs) do
-    proposed = Poison.decode!(attrs)
-    source = Poison.decode!(patient.resource)
-
-    cond do
-      Map.has_key?(source, "id") && source["id"] == proposed["id"] ->
-        {:ok, savjson} =
-          source
-          |> Map.merge(proposed)
-          |> Poison.encode!()
-          |> update_resource()
-
-        {:ok, %Patient{resource: savjson}}
-
-      true ->
-        ####Logger.debug("Patient ID is ambiguous #{inspect(attrs)}")
-        {:error, %Ecto.Changeset{}}
+  def get_vanilla(id, resource_type) do
+    case read_resource(id, resource_type) do
+      {:error, _error} -> nil
+      {:ok, reply} -> %Vanilla{resource: reply.resource}
     end
   end
 
+  @doc """
+  Updates a resource.
 
+  ## Examples
+
+      iex> update_vanilla(vanilla, %{field: new_value})
+      {:ok, %Vanilla{}}
+
+      iex> update_vanilla(vanilla, %{field: bad_value})
+      {:error, "Resource ID must match record key"}
+
+  """
+  def update_vanilla(%Vanilla{} = vanilla, attrs) do
+    case Vanilla.update_changeset(vanilla, attrs) do
+      {:ok, data} ->
+        {:ok, reply} = update_resource(data)
+        {:ok, %Vanilla{resource: reply.resource}}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        source = Jason.decode!(vanilla.resource)
+        format_changeset_errors(changeset, source["resourceType"])
+    end
+  end
+
+  def create_vanilla(attrs) do
+    rtype = String.downcase(attrs.resource_type)
+    van = empty_resource(attrs.resource_type)
+
+    case Vanilla.create_changeset(van, attrs[rtype]) do
+      {:ok, data} ->
+        {:ok, reply} = create_resource(data)
+        {:ok, %Vanilla{resource: reply.resource}}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        format_changeset_errors(changeset, attrs.resource_type)
+    end
+  end
+
+  def delete_vanilla(%Vanilla{} = vanilla) do
+    case Vanilla.delete_changeset(vanilla) do
+      {:ok, data} ->
+        {:ok, reply} = delete_resource(data)
+        {:ok, %Vanilla{resource: reply.resource}}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        format_changeset_errors(changeset, "Patient")
+    end
+  end
+
+  def create_patient(attrs) do
+    case Patient.create_changeset(attrs) do
+      {:ok, data} ->
+        {:ok, reply} = create_resource(data)
+        {:ok, %Patient{resource: reply.resource}}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        format_changeset_errors(changeset, "Patient")
+    end
+  end
+
+  def get_patient(id) do
+    case read_resource(id, "Patient") do
+      {:error, _error} -> nil
+      {:ok, reply} -> %Patient{resource: reply.resource}
+    end
+  end
+
+  def update_patient(%Patient{} = patient, attrs) do
+    case Patient.update_changeset(patient, attrs) do
+      {:ok, data} ->
+        {:ok, reply} = update_resource(data)
+        {:ok, %Patient{resource: reply.resource}}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        format_changeset_errors(changeset, "Patient")
+    end
+  end
+
+  def delete_patient(%Patient{} = patient) do
+    case Patient.delete_changeset(patient) do
+      {:ok, data} ->
+        {:ok, reply} = delete_resource(data)
+        {:ok, %Patient{resource: reply.resource}}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        format_changeset_errors(changeset, "Patient")
+    end
+  end
 
   #
-  # May need to break into separate module for gRPC specific logic
+  # 
   #
 
+  # We close the connection after the read (and incur the cost to re-connect per request) to avoid holding on to mem/net resources.
   defp read_resource(id, type) do
-    # We close the connection after the read (and incur the cost to re-connect per request) to avoid holding on to mem/net resources.
-    case GRPC.Stub.connect(conf!(:fhirbuffer_addr), tlscred()) do
+    case @fhirbuffer_dialer.dial() do
       {:ok, channel} ->
         try do
           request = Fhirbuffer.Search.new(id: id, type: type)
-          {:ok, reply} = Fhirbuffer.Fhirbuffer.Stub.read(channel, request)
-          {:ok, reply.resource}
+          Fhirbuffer.Fhirbuffer.Stub.read(channel, request)
         after
-          GRPC.Stub.disconnect(channel)
+          @fhirbuffer_dialer.hangup(channel)
         end
 
       _ ->
@@ -85,16 +142,14 @@ defmodule Fhirshape.Healthcare do
     end
   end
 
-  defp update_resource(json) do
-    # We close the connection after the update (and incur the cost to re-connect per request) to avoid holding on to mem/net resources.
-    case GRPC.Stub.connect(conf!(:fhirbuffer_addr), tlscred()) do
+  defp update_resource(%{tree: tree}) do
+    case @fhirbuffer_dialer.dial() do
       {:ok, channel} ->
         try do
-          request = Fhirbuffer.Change.new(resource: json)
-          {:ok, reply} = Fhirbuffer.Fhirbuffer.Stub.update(channel, request)
-          {:ok, reply.resource}
+          request = Fhirbuffer.Change.new(resource: Jason.encode!(tree))
+          Fhirbuffer.Fhirbuffer.Stub.update(channel, request)
         after
-          GRPC.Stub.disconnect(channel)
+          @fhirbuffer_dialer.hangup(channel)
         end
 
       _ ->
@@ -102,54 +157,48 @@ defmodule Fhirshape.Healthcare do
     end
   end
 
-  defp tlscred() do
-    cr =
-      GRPC.Credential.new(
-        ssl: [
-          cacertfile: conf!(:ca_cert_path),
-          certfile: conf!(:cert_path),
-          keyfile: conf!(:key_path),
-          verify: :verify_peer,
-          server_name_indication: conf!(:fhirbuffer_indication)
-        ]
-      )
-
-    ####Logger.debug("cred settings #{inspect(cr)}")
-
-    [cred: cr]
-  end
-
-  # TLS Configuration settings that are required to connect to the gRPC svc.
-  # For example, the cert/key files are a mounted volume of the container.
-  defp conf!(key) do
-    kls = Application.get_env(:fhirshape, Fhirshape.Healthcare)
-    case key do
-
-      :fhirbuffer_addr ->
-        Keyword.get(kls, :fhirbuffer_addr)
-
-      :fhirbuffer_indication ->
-        to_charlist(Keyword.get(kls, :fhirbuffer_indication))
-
-      k when k in [:ca_cert_path, :cert_path, :key_path] ->
-        # With crt/key environment vars look for empty values
-        case path = Keyword.get(kls, k) do
-          v when v in ["", nil] -> defaultconf(k)
-          _ -> path
+  defp create_resource(%{tree: tree}) do
+    case @fhirbuffer_dialer.dial() do
+      {:ok, channel} ->
+        try do
+          request = Fhirbuffer.Change.new(resource: Jason.encode!(tree))
+          Fhirbuffer.Fhirbuffer.Stub.create(channel, request)
+        after
+          @fhirbuffer_dialer.hangup(channel)
         end
 
       _ ->
-        raise "Key argument must be one of (:ca_cert_path,:cert_path,:key_path,:fhirbuffer_addr,:fhirbuffer_indication)"
+        {:error, "gRPC connect failed (check TLS credentials)"}
     end
   end
 
-  # In the absence of configured values, fallback to cert/key files in the release.
-  defp defaultconf(key) do
-    cert_dir = Application.app_dir(:fhirshape, "priv/cert")
-    case key do
-      :ca_cert_path -> Path.join(cert_dir, "certauthdev.crt")
-      :cert_path -> Path.join(cert_dir, "fhirshape.crt")
-      :key_path -> Path.join(cert_dir, "fhirshape.key")
+  defp delete_resource(%{tree: tree}) do
+    case @fhirbuffer_dialer.dial() do
+      {:ok, channel} ->
+        try do
+          request = Fhirbuffer.Search.new(id: tree["id"], type: tree["resourceType"])
+          Fhirbuffer.Fhirbuffer.Stub.delete(channel, request)
+        after
+          @fhirbuffer_dialer.hangup(channel)
+        end
+
+      _ ->
+        {:error, "gRPC connect failed (check TLS credentials and common name/indication)"}
     end
+  end
+
+  defp empty_resource(type) do
+    amber = Jason.encode!(%{resourceType: type})
+    %Vanilla{resource: amber}
+  end
+
+  defp format_changeset_errors(%Ecto.Changeset{} = changeset, type) do
+    pairs =
+      Ecto.Changeset.traverse_errors(changeset, fn
+        {msg, _opts} -> type <> msg
+        msg -> type <> msg
+      end)
+
+    {:error, pairs.resource}
   end
 end

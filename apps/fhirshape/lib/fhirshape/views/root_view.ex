@@ -4,5 +4,4 @@ defmodule Fhirshape.RootView do
   def render("index.json", %{}) do
     %{data: "For a prototype UI, see https://accidental-oil.glitch.me"}
   end
-
 end

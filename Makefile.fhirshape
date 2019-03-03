@@ -1,7 +1,7 @@
 .PHONY: help clean build image run release image docker
 
 APP_NAME ?= `grep 'app:' mix.exs | 'fhirshape'`
-APP_VSN ?= `grep 'version:' mix.exs | '0.1.0'`
+APP_VSN ?= `grep 'version:' mix.exs | '0.2.0'`
 BUILD ?= `git rev-parse --short HEAD`
 
 help:

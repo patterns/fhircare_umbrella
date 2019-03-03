@@ -58,7 +58,7 @@
 </div>
 <script>
     // Enumeration of the resource types for the dropdown list.
-    const resourcetypes = [{name: 'Patient', val: 'patients'}, {name: 'Observation', val: 'observation'}]
+    const resourcetypes = [{name: 'Patient', val: 'patients'}, {name: 'Observation', val: 'observations'}, {name: 'Encounter', val: 'encounters'}]
 
     // Make the instance.
     new Vue({
@@ -69,7 +69,7 @@
           ack: null,
           progress: '',
           resourcepath: '',
-          apiurl: 'http://localhost:4000/api',
+          apiurl: 'http://localhost:4000/api/v1',
           rid: 'd3af67c9-0c02-45f2-bc91-fea45af3ee83',
           rtype: 'Choose',
           errors: []
@@ -106,11 +106,16 @@
           e.preventDefault();
           this.errors = [];
           amber = JSON.stringify(this.info.data);
+          var typeprop = this.rtype;
+          if (this.rtype.endsWith('s')) {
+            sindex = this.rtype.lastIndexOf('s');
+            typeprop = this.rtype.slice(0, sindex);
+          }
 
-          // Make update call to the FHIR service (todo: use type specifier instead of fixed patient fieldname)
+          // Make update call to the FHIR service
           axios.put(this.resourcepath, {
               id: this.info.data.id,
-              patient: amber
+              [typeprop]: amber
             })
             .then(response => (this.ack = response))
             .catch(function(error){

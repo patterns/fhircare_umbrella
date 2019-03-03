@@ -4,7 +4,7 @@ defmodule Fhirshape.MixProject do
   def project do
     [
       app: :fhirshape,
-      version: "0.1.3",
+      version: "0.2.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -35,17 +35,18 @@ defmodule Fhirshape.MixProject do
   # Specifies your project dependencies.
   #
   # Type `mix help deps` for examples and options.
+  ##      {:grpc, github: "tony612/grpc-elixir"},
   defp deps do
     [
       {:phoenix, "~> 1.4.0"},
       {:phoenix_pubsub, "~> 1.1"},
-      {:gettext, "~> 0.11"},
-      {:jason, "~> 1.0"},
+      {:gettext, "~> 0.16"},
+      {:jason, "~> 1.1"},
       {:plug_cowboy, "~> 2.0"},
       {:phoenix_ecto, "~> 4.0"},
-      {:grpc, github: "tony612/grpc-elixir"},
-      {:corsica, "~> 1.0"},
-      {:poison, "~> 3.1"}
+      {:grpc, github: "tony612/grpc-elixir", override: true},
+      {:corsica, "~> 1.1"},
+      {:mox, "~> 0.5", only: :test}
     ]
   end
 
