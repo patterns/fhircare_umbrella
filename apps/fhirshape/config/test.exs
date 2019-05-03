@@ -15,9 +15,9 @@ config :fhirshape, Fhirshape.Healthcare,
   ca_cert_path: "priv/cert/certauthdev.crt",
   cert_path: "priv/cert/fhirshape.crt",
   key_path: "priv/cert/fhirshape.key",
-  fhirbuffer_addr: "localhost:50051",
-  fhirbuffer_indication: "NONE",
-  fhirbuffer_dialer: DialerMock,
+  fhirbuffer_addr: "localhost:10000",
+  fhirbuffer_indication: "fhirbuffer",
+  fhirbuffer_dialer: Fhirshape.Healthcare.FhirbufferDialer,
   stub_port: 50051
 
 #  fhirbuffer_addr: "localhost:10000",

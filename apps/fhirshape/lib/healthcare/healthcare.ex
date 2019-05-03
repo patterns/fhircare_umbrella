@@ -1,7 +1,7 @@
 defmodule Fhirshape.Healthcare do
   @moduledoc """
   The Healthcare context.
-  Takes controller calls and passes along to the fhirbuffer service.
+  Takes controller calls and funnels to the fhirbuffer service.
   """
 
   alias Fhirshape.Healthcare.Vanilla
@@ -82,6 +82,13 @@ defmodule Fhirshape.Healthcare do
     end
   end
 
+  def list_vanilla(type, params) do
+    case list_resources(type, params) do
+      {:error, _error} -> {nil, {}}
+      {:ok, reply} -> {reply.vanillas, reply.links}
+    end
+  end
+
   def create_patient(attrs) do
     case Patient.create_changeset(attrs) do
       {:ok, data} ->
@@ -120,6 +127,82 @@ defmodule Fhirshape.Healthcare do
       {:error, %Ecto.Changeset{} = changeset} ->
         format_changeset_errors(changeset, "Patient")
     end
+  end
+
+  def list_patients(params) do
+    case list_resources("Patient", params) do
+      {:error, _error} -> {nil, {}}
+      {:ok, reply} -> {reply.vanillas, reply.links}
+    end
+  end
+
+  def list_changes(params) do
+    case list_histories("Change", params) do
+      {:error, _error} -> {nil, {}}
+      {:ok, reply} -> {reply.histories, reply.links}
+    end
+  end
+
+  defp list_histories(type, params \\ nil) do
+    case @fhirbuffer_dialer.dial() do
+      {:ok, channel} ->
+        try do
+          request = Fhirbuffer.Search.new(type: type)
+          {:ok, stream} = Fhirbuffer.Fhirbuffer.Stub.history(channel, request)
+
+          # In absence of a filter expression, prevent fire hose with 100 limit.
+          limit = if params == nil, do: 100, else: params.limit
+          offset = if params == nil, do: 1, else: params.offset
+          sortcol = if params == nil, do: "id", else: params.sort_field
+          order = if params == nil, do: :ASC, else: params.order
+
+          # First sort by specified column, secondary sort by id.
+          deamber =
+            Enum.reduce(stream, [], fn {:ok, record}, acc ->
+              [Jason.decode!(record.resource) | acc]
+            end)
+            |> Enum.sort_by(&{&1[sortcol], &1["id"]}, if(order == :DESC, do: &>=/2, else: &<=/2))
+
+          count = Enum.count(deamber)
+
+          histories =
+            deamber
+            |> Enum.drop((offset - 1) * limit)
+            |> Enum.take(limit)
+
+          ## stream
+          ## |> Stream.scan([], fn {:ok, record}, acc -> [Jason.decode!(record.resource) | acc] end)
+          ## |> Stream.drop((offset-1)*limit)
+          ## |> Enum.take(limit)
+
+          # TODO revisit stream for lazy fetches (the view was not happy with changes atm)
+
+          links = calc_links(limit, offset, count, sortcol, order)
+
+          {:ok, %{histories: histories, links: links}}
+        after
+          @fhirbuffer_dialer.hangup(channel)
+        end
+
+      _ ->
+        {:error, "gRPC connect failed (check TLS credentials and common name/indication)"}
+    end
+  end
+
+  defp calc_links(limit, offset, count, sortcol, order) do
+    sort = if(order == :ASC, do: "", else: "-") <> sortcol
+    self = offset
+    prev = offset - 1
+    next = offset + 1
+    last = div(count, limit)
+
+    %{
+      prev: %{number: prev, size: limit, sort: sort},
+      next: %{number: next, size: limit, sort: sort},
+      first: %{number: 1, size: limit, sort: sort},
+      last: %{number: last, size: limit, sort: sort},
+      self: %{number: self, size: limit, sort: sort}
+    }
   end
 
   #
@@ -178,6 +261,52 @@ defmodule Fhirshape.Healthcare do
         try do
           request = Fhirbuffer.Search.new(id: tree["id"], type: tree["resourceType"])
           Fhirbuffer.Fhirbuffer.Stub.delete(channel, request)
+        after
+          @fhirbuffer_dialer.hangup(channel)
+        end
+
+      _ ->
+        {:error, "gRPC connect failed (check TLS credentials and common name/indication)"}
+    end
+  end
+
+  defp list_resources(type, params \\ nil) do
+    case @fhirbuffer_dialer.dial() do
+      {:ok, channel} ->
+        try do
+          request = Fhirbuffer.Search.new(type: type)
+          {:ok, stream} = Fhirbuffer.Fhirbuffer.Stub.list(channel, request)
+
+          # In absence of a filter expression, prevent fire hose with 100 limit.
+          limit = if params == nil, do: 100, else: params.limit
+          offset = if params == nil, do: 1, else: params.offset
+          sortcol = if params == nil, do: "id", else: params.sort_field
+          order = if params == nil, do: :ASC, else: params.order
+
+          deamber =
+            Enum.reduce(stream, [], fn {:ok, record}, acc ->
+              [Jason.decode!(record.resource) | acc]
+            end)
+            |> Enum.sort_by(&{&1[sortcol], &1["id"]}, if(order == :DESC, do: &>=/2, else: &<=/2))
+
+          count = Enum.count(deamber)
+
+          vanillas =
+            deamber
+            |> Enum.drop((offset - 1) * limit)
+            |> Enum.take(limit)
+
+          ## stream
+          ## |> Stream.scan([], fn {:ok, record}, acc -> [record | acc] end)
+          ## |> Stream.drop(offset*limit)
+          ## |> Stream.take(count)
+          ## |> Enum.to_list()
+
+          # TODO revisit stream for lazy fetches (the view was not happy with changes atm)
+
+          links = calc_links(limit, offset, count, sortcol, order)
+
+          {:ok, %{vanillas: vanillas, links: links}}
         after
           @fhirbuffer_dialer.hangup(channel)
         end

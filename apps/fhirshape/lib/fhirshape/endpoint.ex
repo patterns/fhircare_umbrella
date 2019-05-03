@@ -47,10 +47,12 @@ defmodule Fhirshape.Endpoint do
   plug(Corsica,
     origins: [
       "http://localhost:4101",
+      "http://localhost:4200",
       "https://accidental-oil.glitch.me",
-      "https://joyous-scissor.glitch.me"
+      "https://fhir-admin.firebaseapp.com"
     ],
     allow_headers: :all,
+    expose_headers: ~w(x-total-count content-range),
     log: [rejected: :error, invalid: :warn, accepted: :debug]
   )
 

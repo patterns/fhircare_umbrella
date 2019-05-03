@@ -7,7 +7,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
   @ratom :patient
   @rtype "patient"
   @rname "Patient"
-  @rpath "/api/v1/patients"
+  #### @rpath "/api/v1/patients"
   @invalid_attrs %{name: ""}
   @base_attrs %{resourceType: @rname, name: [%{:given => ["Nikola"], :family => "Tesla"}]}
 
@@ -29,7 +29,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
         {:ok, _key} ->
           amber =
             @base_resp
-            |> Map.put_new("id", req.id)
+            |> Map.put_new(:id, req.id)
             |> Jason.encode!()
 
           Fhirbuffer.Record.new(resource: amber)
@@ -103,7 +103,11 @@ defmodule Fhirshape.V1.PatientControllerTest do
           |> stub(:dial, fn -> {:ok, channel} end)
           |> stub(:hangup, fn _ -> {:ok, channel} end)
 
-          amber = Jason.encode!(@base_attrs)
+          amber =
+            @base_attrs
+            |> Map.put_new(:temporaryseqnum, "f247d8de-3acb-42e1-b665-f288b427e5a8")
+            |> Jason.encode!()
+
           attrs = %{@rtype => amber, :resource_type => @rname}
 
           Fhirshape.Healthcare.create_vanilla(attrs)
@@ -126,7 +130,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
 
           amber =
             @base_attrs
-            |> Map.put("id", model["id"])
+            |> Map.put(:id, model["id"])
             |> Jason.encode!()
 
           # todo DEBUG  should refactor to delete_vanilla for stubbed test context
@@ -165,7 +169,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
           # Trigger the controller with request
           response =
             conn
-            |> get(@rpath <> "/" <> test_id)
+            |> get(Routes.v1_patient_path(conn, :show, test_id))
             |> json_response(200)
 
           expected = %{
@@ -194,7 +198,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
           # For clarification, we purposely violate the UUID format here to force a error.
           # We don't actually care about fetching the record from the db. We use the fact
           # that 'zzz' can never be a record key.
-          conn = get(conn, @rpath <> "/zzz")
+          conn = get(conn, Routes.v1_patient_path(conn, :show, "zzz"))
 
           assert text_response(conn, 404) =~ @rname <> " not found"
         end,
@@ -236,7 +240,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
 
           response =
             conn
-            |> patch(@rpath <> "/" <> test_id, attrs)
+            |> patch(Routes.v1_patient_path(conn, :update, test_id), attrs)
             |> json_response(200)
 
           expected = %{
@@ -281,7 +285,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
             |> Map.put(:id, test_id)
             |> Map.put(@ratom, amber)
 
-          conn = patch(conn, @rpath <> "/" <> test_id, attrs)
+          conn = patch(conn, Routes.v1_patient_path(conn, :update, test_id), attrs)
 
           assert text_response(conn, :bad_request) =~ @rname <> " name field cannot be blank"
         end,
@@ -316,7 +320,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
 
           response =
             conn
-            |> post(@rpath, attrs)
+            |> post(Routes.v1_patient_path(conn, :create), attrs)
             |> json_response(:created)
 
           expected = %{
@@ -353,7 +357,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
           amber = Jason.encode!(@invalid_attrs)
           attrs = %{@ratom => amber}
 
-          conn = post(conn, @rpath, attrs)
+          conn = post(conn, Routes.v1_patient_path(conn, :create), attrs)
 
           assert text_response(conn, 400) =~ @rname <> " name field is required"
         end,
@@ -384,7 +388,7 @@ defmodule Fhirshape.V1.PatientControllerTest do
 
           response =
             conn
-            |> delete(@rpath <> "/" <> test_id)
+            |> delete(Routes.v1_patient_path(conn, :delete, test_id))
             |> json_response(200)
 
           expected = %{
@@ -397,6 +401,98 @@ defmodule Fhirshape.V1.PatientControllerTest do
         end,
         sport
       )
+    end
+  end
+
+  describe "index/2" do
+    setup [:verify_on_exit!]
+
+    @tag integration: false
+    test "Responds with all Patients maxed at 100", %{
+      conn: conn,
+      sport: sport
+    } do
+      run_server(
+        VanillaServer,
+        fn port ->
+          {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
+
+          DialerMock
+          |> stub(:dial, fn -> {:ok, channel} end)
+          |> stub(:hangup, fn _ -> {:ok, channel} end)
+
+          response =
+            conn
+            |> get(Routes.v1_patient_path(conn, :index))
+            |> json_response(200)
+
+          count = length(response["data"])
+
+          assert count != 0
+          assert count <= 100
+        end,
+        sport
+      )
+    end
+
+    @tag integration: false
+    test "Responds with paginated set of Patients", %{
+      conn: conn,
+      sport: sport,
+      testdata: testdata
+    } do
+      run_server(
+        VanillaServer,
+        fn port ->
+          {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
+
+          DialerMock
+          |> stub(:dial, fn -> {:ok, channel} end)
+          |> stub(:hangup, fn _ -> {:ok, channel} end)
+
+          expected_seq = testdata["temporaryseqnum"]
+          sort_field = "ts"
+          limit = 10
+
+          response =
+            conn
+            |> get(
+              Routes.v1_patient_path(conn, :index,
+                _end: limit,
+                _order: "DESC",
+                _sort: sort_field,
+                _start: 0
+              )
+            )
+            |> json_response(200)
+
+          count = length(response["data"])
+
+          matched =
+            response["data"]
+            |> Enum.find(fn row ->
+              row["attributes"]["temporaryseqnum"] == expected_seq
+            end)
+
+          assert count != 0
+          assert count <= limit
+          assert matched != nil
+
+          # TODO BUG the id field inside the JSON resource is not persisted
+          #### assert matched["id"] == testdata["id"]
+        end,
+        sport
+      )
+    end
+
+    @tag integration: false
+    test "Responds with redirect", %{
+      conn: conn
+    } do
+      conn = get(conn, "/patients")
+
+      assert conn.status == 302
+      assert String.contains?(conn.resp_body, "href=\"/api/v1/patients\"")
     end
   end
 

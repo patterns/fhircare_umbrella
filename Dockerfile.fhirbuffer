@@ -1,4 +1,4 @@
-FROM golang:alpine3.9 AS builder
+FROM golang:1.12.4-alpine3.9 AS builder
 ARG ZIPPROTOC=https://github.com/protocolbuffers/protobuf/releases/download/v3.7.0rc2/protoc-3.7.0-rc-2-linux-x86_64.zip
 ENV PATH=/usr/local/protoc/bin:$PATH
 RUN apk update && apk --no-cache add  openssl-dev autoconf automake libtool git \

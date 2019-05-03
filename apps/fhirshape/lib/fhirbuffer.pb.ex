@@ -44,6 +44,8 @@ defmodule Fhirbuffer.Fhirbuffer.Service do
   rpc(:Update, Fhirbuffer.Change, Fhirbuffer.Record)
   rpc(:Create, Fhirbuffer.Change, Fhirbuffer.Record)
   rpc(:Delete, Fhirbuffer.Search, Fhirbuffer.Record)
+  rpc(:List, Fhirbuffer.Search, stream(Fhirbuffer.Record))
+  rpc(:History, Fhirbuffer.Search, stream(Fhirbuffer.Record))
 end
 
 defmodule Fhirbuffer.Fhirbuffer.Stub do

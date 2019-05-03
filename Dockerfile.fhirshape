@@ -1,4 +1,4 @@
-# This should match the version of Alpine that the `elixir:1.8.0-alpine` image uses
+# This should match the version of Alpine that the `elixir:1.8.1-alpine` image uses
 ARG ALPINE_VERSION=3.9
 
 FROM elixir:1.8.1-alpine AS builder

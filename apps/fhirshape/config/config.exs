@@ -15,6 +15,11 @@ config :fhirshape, Fhirshape.Endpoint,
   render_errors: [view: Fhirshape.ErrorView, accepts: ~w(json)],
   pubsub: [name: Fhirshape.PubSub, adapter: Phoenix.PubSub.PG2]
 
+# Enable JSON:API accept header
+config :mime, :types, %{
+  "application/vnd.api+json" => ["json-api"]
+}
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"
